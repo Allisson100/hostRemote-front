@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { io } from "socket.io-client";
-import { useNavigate } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 
-const socket = io("https://42f2-177-72-141-5.ngrok-free.app", {
+const socket = io("https://1835-177-72-141-5.ngrok-free.app", {
   transports: ["websocket", "polling"], // Garante compatibilidade
   reconnectionAttempts: 5, // Tenta reconectar até 5 vezes
   reconnectionDelay: 1000, // Espera 1 segundo entre tentativas
@@ -12,7 +11,8 @@ const socket = io("https://42f2-177-72-141-5.ngrok-free.app", {
 export default function Host() {
   const [roomId, setRoomId] = useState(null);
   const [controlAllowed, setControlAllowed] = useState(true);
-  const navigate = useNavigate();
+  const [stream, setStream] = useState(null);
+  const videoRef = useRef(null);
 
   const generateRoom = () => {
     const newRoomId = uuidv4().slice(0, 12);
@@ -34,6 +34,30 @@ export default function Host() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [roomId]);
 
+  const startScreenShare = async () => {
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+      });
+      setStream(screenStream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = screenStream;
+      }
+      const [videoTrack] = screenStream.getVideoTracks();
+      socket.emit("startScreenShare", { roomId });
+      videoTrack.onended = () => {
+        socket.emit("stopScreenShare", { roomId });
+        setStream(null);
+      };
+
+      screenStream.getTracks().forEach((track) => {
+        socket.emit("screenStream", { roomId, track });
+      });
+    } catch (error) {
+      console.error("Erro ao compartilhar a tela", error);
+    }
+  };
+
   return (
     <div>
       <h1>Host</h1>
@@ -45,6 +69,14 @@ export default function Host() {
         </p>
       )}
       <p>Controle do mouse: {controlAllowed ? "ATIVADO" : "BLOQUEADO"}</p>
+      <button onClick={startScreenShare}>Compartilhar Tela</button>
+      {stream && (
+        <video
+          ref={videoRef}
+          autoPlay
+          style={{ width: "300px", border: "1px solid black" }}
+        />
+      )}
     </div>
   );
 }
