@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 import { useNavigate } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 
-const socket = io("https://8acc-177-72-141-5.ngrok-free.app", {
+const socket = io("https://5274-177-72-141-5.ngrok-free.app", {
   transports: ["websocket", "polling"], // Garante compatibilidade
   reconnectionAttempts: 5, // Tenta reconectar até 5 vezes
   reconnectionDelay: 1000, // Espera 1 segundo entre tentativas
@@ -41,7 +41,7 @@ export default function Host() {
       {roomId && (
         <p>
           Envie este link para o cliente:
-          <p>{`https://client-remote-front.vercel.app/client/${roomId}`}</p>
+          <p>{`https://client-remote-front.vercel.app/#/client/${roomId}`}</p>
         </p>
       )}
       <p>Controle do mouse: {controlAllowed ? "ATIVADO" : "BLOQUEADO"}</p>
