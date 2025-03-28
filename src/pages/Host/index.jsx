@@ -16,6 +16,8 @@ export default function Host() {
   const peerConnection = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
 
+  const [inputValue, setInputValue] = useState("");
+
   const generateRoom = () => {
     const newRoomId = uuidv4().slice(0, 12);
     setRoomId(newRoomId);
@@ -95,6 +97,10 @@ export default function Host() {
   return (
     <div>
       <h1>Host</h1>
+      <input
+        value={inputValue}
+        onChange={(event) => setInputValue(event.target.value)}
+      />
       <button onClick={generateRoom}>Gerar Link</button>
       {roomId && (
         <p>
