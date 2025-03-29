@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
 
-const socket = io("https://09f1-177-72-141-5.ngrok-free.app", {
+const socket = io("https://a0e9-177-72-141-5.ngrok-free.app", {
   transports: ["websocket", "polling"], // Garante compatibilidade
   reconnectionAttempts: 5, // Tenta reconectar até 5 vezes
   reconnectionDelay: 1000, // Espera 1 segundo entre tentativas
@@ -15,6 +15,7 @@ export default function Host() {
   const localStream = useRef(null);
   const peerConnection = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
+  const iceCandidatesQueue = useRef([]);
 
   const [inputValue, setInputValue] = useState("");
 
@@ -40,48 +41,82 @@ export default function Host() {
 
   useEffect(() => {
     socket.emit("register", { role: "sender" });
-
     return () => {
       if (localStream.current) {
         localStream.current.getTracks().forEach((track) => track.stop());
       }
+      socket.off("answer");
+      socket.off("candidate");
     };
   }, []);
 
   const startConnection = () => {
     peerConnection.current = new RTCPeerConnection();
 
+    // Adiciona todas as tracks do stream à conexão
     localStream.current.getTracks().forEach((track) => {
       peerConnection.current.addTrack(track, localStream.current);
     });
 
+    // Emite candidatos ICE
     peerConnection.current.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit("candidate", event.candidate);
       }
     };
 
-    peerConnection.current.createOffer().then((offer) => {
-      peerConnection.current.setLocalDescription(offer);
-      socket.emit("offer", offer);
-    });
+    // Cria a oferta, define o local description e a envia
+    peerConnection.current
+      .createOffer()
+      .then((offer) =>
+        peerConnection.current.setLocalDescription(offer).then(() => offer)
+      )
+      .then((offer) => {
+        socket.emit("offer", offer);
+      })
+      .catch((err) => console.error("Erro ao criar oferta:", err));
 
+    // Ao receber a resposta (answer) do client
     socket.on("answer", (answer) => {
-      peerConnection.current.setRemoteDescription(
-        new RTCSessionDescription(answer)
-      );
+      if (!peerConnection.current.remoteDescription) {
+        peerConnection.current
+          .setRemoteDescription(answer)
+          .then(() => {
+            // Adiciona os ICE candidates pendentes
+            iceCandidatesQueue.current.forEach((candidate) => {
+              peerConnection.current
+                .addIceCandidate(candidate)
+                .catch((err) =>
+                  console.error("Erro ao adicionar ICE candidate:", err)
+                );
+            });
+            iceCandidatesQueue.current = [];
+          })
+          .catch((err) =>
+            console.error("Erro ao setRemoteDescription com answer:", err)
+          );
+      }
     });
 
+    // Trata os ICE candidates recebidos do client
     socket.on("candidate", (candidate) => {
       if (candidate) {
-        peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+        if (!peerConnection.current.remoteDescription) {
+          iceCandidatesQueue.current.push(candidate);
+        } else {
+          peerConnection.current
+            .addIceCandidate(candidate)
+            .catch((err) =>
+              console.error("Erro ao adicionar ICE candidate:", err)
+            );
+        }
       }
     });
   };
 
+  // Captura a tela para compartilhamento
   const handleShareScreen = async () => {
     try {
-      // Prompt the user to select a screen/window
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
       });
@@ -90,10 +125,9 @@ export default function Host() {
       setIsSharing(true);
       startConnection();
     } catch (err) {
-      console.error("Error sharing screen:", err);
+      console.error("Erro ao compartilhar tela:", err);
     }
   };
-
   return (
     <div>
       <h1>Host</h1>
@@ -104,8 +138,7 @@ export default function Host() {
       <button onClick={generateRoom}>Gerar Link</button>
       {roomId && (
         <p>
-          Envie este link para o cliente:
-          <p>{`https://client-remote-front.vercel.app/#/client/${roomId}`}</p>
+          {`Envie este link para o cliente: https://client-remote-front.vercel.app/#/client/${roomId}`}
         </p>
       )}
       <p>Controle do mouse: {controlAllowed ? "ATIVADO" : "BLOQUEADO"}</p>
