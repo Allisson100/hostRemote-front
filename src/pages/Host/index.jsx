@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
 
-const socket = io("https://a0e9-177-72-141-5.ngrok-free.app", {
+const socket = io("https://1676-177-72-141-5.ngrok-free.app", {
   transports: ["websocket", "polling"], // Garante compatibilidade
   reconnectionAttempts: 5, // Tenta reconectar até 5 vezes
   reconnectionDelay: 1000, // Espera 1 segundo entre tentativas
