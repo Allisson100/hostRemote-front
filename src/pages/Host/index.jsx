@@ -11,11 +11,12 @@ const socket = io("https://a0e9-177-72-141-5.ngrok-free.app", {
 export default function Host() {
   const [roomId, setRoomId] = useState(null);
   const [controlAllowed, setControlAllowed] = useState(true);
-  const videoRef = useRef(null);
-  const localStream = useRef(null);
+
+  const [hasScreenSharing, setHasScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState(null);
+  const userVideoRef = useRef(null);
+  const localVideoRef = useRef(null);
   const peerConnection = useRef(null);
-  const [isSharing, setIsSharing] = useState(false);
-  const iceCandidatesQueue = useRef([]);
 
   const [inputValue, setInputValue] = useState("");
 
@@ -40,94 +41,101 @@ export default function Host() {
   }, [roomId]);
 
   useEffect(() => {
-    socket.emit("register", { role: "sender" });
+    socket.on("offer", handleOffer);
+    socket.on("answer", handleAnswer);
+    socket.on("ice-candidate", handleNewICECandidate);
+
     return () => {
-      if (localStream.current) {
-        localStream.current.getTracks().forEach((track) => track.stop());
-      }
-      socket.off("answer");
-      socket.off("candidate");
+      socket.off("offer", handleOffer);
+      socket.off("answer", handleAnswer);
+      socket.off("ice-candidate", handleNewICECandidate);
     };
   }, []);
 
-  const startConnection = () => {
-    peerConnection.current = new RTCPeerConnection();
+  // useEffect para atribuir a stream ao elemento de vídeo assim que a referência estiver pronta
+  useEffect(() => {
+    if (localVideoRef.current && screenStream) {
+      localVideoRef.current.srcObject = screenStream;
+      console.log("Stream atribuída ao localVideoRef!");
+    }
+  }, [localVideoRef, screenStream]);
 
-    // Adiciona todas as tracks do stream à conexão
-    localStream.current.getTracks().forEach((track) => {
-      peerConnection.current.addTrack(track, localStream.current);
-    });
-
-    // Emite candidatos ICE
-    peerConnection.current.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit("candidate", event.candidate);
-      }
-    };
-
-    // Cria a oferta, define o local description e a envia
-    peerConnection.current
-      .createOffer()
-      .then((offer) =>
-        peerConnection.current.setLocalDescription(offer).then(() => offer)
-      )
-      .then((offer) => {
-        socket.emit("offer", offer);
-      })
-      .catch((err) => console.error("Erro ao criar oferta:", err));
-
-    // Ao receber a resposta (answer) do client
-    socket.on("answer", (answer) => {
-      if (!peerConnection.current.remoteDescription) {
-        peerConnection.current
-          .setRemoteDescription(answer)
-          .then(() => {
-            // Adiciona os ICE candidates pendentes
-            iceCandidatesQueue.current.forEach((candidate) => {
-              peerConnection.current
-                .addIceCandidate(candidate)
-                .catch((err) =>
-                  console.error("Erro ao adicionar ICE candidate:", err)
-                );
-            });
-            iceCandidatesQueue.current = [];
-          })
-          .catch((err) =>
-            console.error("Erro ao setRemoteDescription com answer:", err)
-          );
-      }
-    });
-
-    // Trata os ICE candidates recebidos do client
-    socket.on("candidate", (candidate) => {
-      if (candidate) {
-        if (!peerConnection.current.remoteDescription) {
-          iceCandidatesQueue.current.push(candidate);
-        } else {
-          peerConnection.current
-            .addIceCandidate(candidate)
-            .catch((err) =>
-              console.error("Erro ao adicionar ICE candidate:", err)
-            );
-        }
-      }
-    });
-  };
-
-  // Captura a tela para compartilhamento
-  const handleShareScreen = async () => {
+  const startScreenSharing = async () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
       });
-      localStream.current = stream;
-      videoRef.current.srcObject = stream;
-      setIsSharing(true);
-      startConnection();
+      // Armazena a stream no estado
+      setScreenStream(stream);
+      // Atualiza o estado para renderizar o componente de vídeo
+      setHasScreenSharing(true);
+
+      if (!peerConnection.current) {
+        peerConnection.current = createPeerConnection();
+      }
+      stream.getTracks().forEach((track) => {
+        peerConnection.current.addTrack(track, stream);
+      });
+      createOffer();
     } catch (err) {
-      console.error("Erro ao compartilhar tela:", err);
+      console.error("Error starting screen sharing:", err);
     }
   };
+
+  const createPeerConnection = () => {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit("ice-candidate", event.candidate);
+      }
+    };
+
+    pc.ontrack = (event) => {
+      if (event.streams && event.streams[0]) {
+        userVideoRef.current.srcObject = event.streams[0];
+      }
+    };
+
+    return pc;
+  };
+
+  const createOffer = async () => {
+    try {
+      const offer = await peerConnection.current.createOffer();
+      await peerConnection.current.setLocalDescription(offer);
+      socket.emit("offer", offer);
+    } catch (err) {
+      console.error("Error creating offer:", err);
+    }
+  };
+
+  const handleOffer = async (offer) => {
+    try {
+      if (!peerConnection.current) {
+        peerConnection.current = createPeerConnection();
+      }
+      await peerConnection.current.setRemoteDescription(offer);
+      const answer = await peerConnection.current.createAnswer();
+      await peerConnection.current.setLocalDescription(answer);
+      socket.emit("answer", answer);
+    } catch (err) {
+      console.error("Error handling offer:", err);
+    }
+  };
+
+  const handleAnswer = (answer) => {
+    peerConnection.current.setRemoteDescription(answer);
+  };
+
+  const handleNewICECandidate = (candidate) => {
+    if (peerConnection.current) {
+      peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  };
+
   return (
     <div>
       <h1>Host</h1>
@@ -142,8 +150,17 @@ export default function Host() {
         </p>
       )}
       <p>Controle do mouse: {controlAllowed ? "ATIVADO" : "BLOQUEADO"}</p>
-      {!isSharing && <button onClick={handleShareScreen}>Share Screen</button>}
-      <video ref={videoRef} autoPlay muted style={{ width: "300px" }} />
+      {!hasScreenSharing ? (
+        <button onClick={startScreenSharing}>Start Screen Sharing</button>
+      ) : (
+        // Agora o componente de vídeo sempre estará renderizado quando hasScreenSharing for true
+        <video
+          ref={localVideoRef}
+          autoPlay
+          muted
+          style={{ width: "500px" }}
+        ></video>
+      )}
     </div>
   );
 }
