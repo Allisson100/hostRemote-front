@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
 
-const socket = io("https://f065-177-72-141-202.ngrok-free.app", {
+const socket = io("https://8b71-177-72-141-202.ngrok-free.app", {
   transports: ["websocket", "polling"],
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
@@ -18,10 +18,12 @@ export default function Host() {
   const localVideoRef = useRef(null);
   const peerConnection = useRef(null);
 
-  const [inputValue, setInputValue] = useState("");
+  const inputRef = useRef(null);
 
   const [selectedImage, setSelectedImage] = useState(null);
   const [isImageSharing, setIsImageSharing] = useState(false);
+
+  const [clientConnected, setClientConnected] = useState(false);
 
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
@@ -35,6 +37,7 @@ export default function Host() {
   };
 
   const toggleImageSharing = () => {
+    stopScreenSharing();
     if (isImageSharing) {
       socket.emit("stopImageShare", { roomId });
       setIsImageSharing(false);
@@ -45,6 +48,7 @@ export default function Host() {
   };
 
   const generateRoom = () => {
+    setClientConnected(false);
     const newRoomId = uuidv4().slice(0, 12);
     setRoomId(newRoomId);
     socket.emit("createRoom", newRoomId);
@@ -52,10 +56,14 @@ export default function Host() {
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === "p") {
+      if (event.ctrlKey && event.altKey && event.key.toLowerCase() === "p") {
         setControlAllowed(false);
         socket.emit("toggleControl", { roomId, allowed: false });
-      } else if (event.key === "c") {
+      } else if (
+        event.ctrlKey &&
+        event.altKey &&
+        event.key.toLowerCase() === "s"
+      ) {
         setControlAllowed(true);
         socket.emit("toggleControl", { roomId, allowed: true });
       }
@@ -68,11 +76,15 @@ export default function Host() {
     socket.on("offer", handleOffer);
     socket.on("answer", handleAnswer);
     socket.on("ice-candidate", handleNewICECandidate);
+    socket.on("clientConnected", () => {
+      setClientConnected(true);
+    });
 
     return () => {
       socket.off("offer", handleOffer);
       socket.off("answer", handleAnswer);
       socket.off("ice-candidate", handleNewICECandidate);
+      socket.off("clientConnected");
     };
   }, []);
 
@@ -83,6 +95,10 @@ export default function Host() {
   }, [localVideoRef, screenStream]);
 
   const startScreenSharing = async () => {
+    if (isImageSharing) {
+      toggleImageSharing();
+    }
+
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
@@ -174,59 +190,268 @@ export default function Host() {
     }
   };
 
+  const triggerFileSelect = () => {
+    if (isImageSharing) {
+      toggleImageSharing();
+    }
+    inputRef.current.click();
+  };
+
   return (
-    <div>
-      <h1>Host</h1>
-      <input
-        value={inputValue}
-        onChange={(event) => setInputValue(event.target.value)}
-      />
-      <button onClick={generateRoom}>Gerar Link</button>
-      {roomId && (
-        <p>
-          {`Envie este link para o cliente: https://client-remote-front.vercel.app/#/client/${roomId}`}
-        </p>
-      )}
-      <p>Controle do mouse: {controlAllowed ? "ATIVADO" : "BLOQUEADO"}</p>
-      {!hasScreenSharing ? (
-        <button onClick={startScreenSharing}>Start Screen Sharing</button>
-      ) : (
-        <div>
+    <div
+      style={{
+        padding: "2rem",
+        backgroundColor: "#f4f4f9",
+        height: "100vh",
+        width: "100%",
+        display: "flex",
+        gap: "2rem",
+      }}
+    >
+      <div
+        style={{
+          width: "70%",
+          backgroundColor: "#000000",
+          height: "calc(100vh - 4rem)",
+          borderRadius: "2rem",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {hasScreenSharing && (
           <video
             ref={localVideoRef}
             autoPlay
             muted
-            style={{ width: "500px" }}
+            style={{
+              width: "100%",
+              height: "auto",
+            }}
           ></video>
-          <br />
-          <button onClick={stopScreenSharing} style={{ marginTop: "10px" }}>
-            Parar Compartilhamento
-          </button>
-        </div>
-      )}
-
-      <div style={{ marginTop: 20 }}>
-        <h3>Compartilhar Imagem</h3>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleImageSelect}
-          style={{ marginBottom: "10px" }}
-        />
+        )}
         {selectedImage && (
-          <div style={{ marginBottom: "10px" }}>
+          <div style={{ marginBottom: "10px", textAlign: "center" }}>
             <img
               src={selectedImage}
               alt="Miniatura"
-              style={{ width: "150px", border: "1px solid #ccc" }}
+              style={{
+                width: "100%",
+                height: "auto",
+              }}
             />
           </div>
         )}
-        <button onClick={toggleImageSharing} disabled={!selectedImage}>
-          {isImageSharing
-            ? "Parar de Compartilhar Imagem"
-            : "Compartilhar Imagem"}
-        </button>
+        {!hasScreenSharing && !selectedImage && (
+          <p style={{ fontSize: "2rem", color: "#ffffff" }}>
+            Aguardando compartilhamento
+          </p>
+        )}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          height: "calc(100vh - 4rem)",
+          width: "30%",
+          backgroundColor: "#ffffff",
+          borderRadius: "2rem",
+          overflow: "hidden",
+          boxShadow: "0 -20px 30px -10px rgba(0, 0, 0, 0.3)",
+        }}
+      >
+        <div
+          style={{
+            padding: "2rem",
+            borderRadius: "8px",
+            width: "100%",
+            height: "100%",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {roomId && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "1rem",
+                  marginBottom: "1rem",
+                }}
+              >
+                {clientConnected ? (
+                  <span style={{ fontSize: "1rem", fontWeight: "bold" }}>
+                    Cliente conectado
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      fontSize: "1rem",
+                      fontWeight: "bold",
+                      color: "#83222c",
+                    }}
+                  >
+                    Aguardando cliente se conectar
+                  </span>
+                )}
+              </p>
+              {clientConnected && (
+                <>
+                  <p>
+                    Acionar mouse:{" "}
+                    <span style={{ fontWeight: "bold" }}>CRTL + ALT + s</span>
+                  </p>
+                  <p
+                    style={{
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    Desativar mouse:{" "}
+                    <span style={{ fontWeight: "bold" }}>CRTL + ALT + p</span>
+                  </p>
+                </>
+              )}
+
+              <p
+                style={{
+                  fontSize: "1rem",
+                  color: "#333",
+                  marginBottom: "1rem",
+                }}
+              >
+                Envie este link para o cliente:{" "}
+                <span style={{ fontWeight: "bold" }}>
+                  https://client-remote-front.vercel.app/#/client/{roomId}
+                </span>
+              </p>
+
+              {clientConnected && (
+                <p
+                  style={{
+                    fontSize: "1rem",
+                    marginBottom: "4rem",
+                    color: controlAllowed ? "green" : "red",
+                  }}
+                >
+                  Controle do mouse: {controlAllowed ? "ATIVADO" : "BLOQUEADO"}
+                </p>
+              )}
+            </div>
+          )}
+          <button
+            onClick={generateRoom}
+            style={{
+              padding: "10px 20px",
+              backgroundColor: "#031D44",
+              color: "#fff",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              width: "100%",
+              fontSize: "1rem",
+              marginBottom: "0.5rem",
+            }}
+          >
+            Gerar Link
+          </button>
+
+          {roomId &&
+            clientConnected &&
+            (!hasScreenSharing ? (
+              <button
+                onClick={startScreenSharing}
+                style={{
+                  padding: "10px 20px",
+                  backgroundColor: "#70A288",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  width: "100%",
+                  fontSize: "1rem",
+                  marginBottom: "0.5rem",
+                }}
+              >
+                Compartilhar vídeo
+              </button>
+            ) : (
+              <div style={{ textAlign: "center" }}>
+                <button
+                  onClick={stopScreenSharing}
+                  style={{
+                    padding: "10px 20px",
+                    backgroundColor: "#83222c",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontSize: "1rem",
+                    width: "100%",
+                    marginBottom: "0.5rem",
+                  }}
+                >
+                  Parar Compartilhamento
+                </button>
+              </div>
+            ))}
+
+          {selectedImage && (
+            <button
+              onClick={toggleImageSharing}
+              disabled={!selectedImage}
+              style={{
+                padding: "10px 20px",
+                backgroundColor: isImageSharing ? "#83222c" : "#DAB785",
+                color: "#fff",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "1rem",
+                width: "100%",
+                marginBottom: "0.5rem",
+              }}
+            >
+              {isImageSharing
+                ? "Parar de Compartilhar Imagem"
+                : "Compartilhar Imagem"}
+            </button>
+          )}
+
+          {roomId && clientConnected && (
+            <button
+              onClick={triggerFileSelect}
+              style={{
+                padding: "10px 20px",
+                backgroundColor: "#04395E",
+                color: "#fff",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "1rem",
+                width: "100%",
+              }}
+            >
+              Escolher Imagem
+            </button>
+          )}
+
+          <div>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              ref={inputRef}
+              style={{
+                display: "none",
+              }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
