@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
 
-const socket = io("https://1676-177-72-141-5.ngrok-free.app", {
-  transports: ["websocket", "polling"], // Garante compatibilidade
-  reconnectionAttempts: 5, // Tenta reconectar até 5 vezes
-  reconnectionDelay: 1000, // Espera 1 segundo entre tentativas
+const socket = io("https://f065-177-72-141-202.ngrok-free.app", {
+  transports: ["websocket", "polling"],
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
 });
 
 export default function Host() {
@@ -19,6 +19,30 @@ export default function Host() {
   const peerConnection = useRef(null);
 
   const [inputValue, setInputValue] = useState("");
+
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [isImageSharing, setIsImageSharing] = useState(false);
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result); // Base64
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const toggleImageSharing = () => {
+    if (isImageSharing) {
+      socket.emit("stopImageShare", { roomId });
+      setIsImageSharing(false);
+    } else if (selectedImage) {
+      socket.emit("shareImage", { roomId, imageData: selectedImage });
+      setIsImageSharing(true);
+    }
+  };
 
   const generateRoom = () => {
     const newRoomId = uuidv4().slice(0, 12);
@@ -52,11 +76,9 @@ export default function Host() {
     };
   }, []);
 
-  // useEffect para atribuir a stream ao elemento de vídeo assim que a referência estiver pronta
   useEffect(() => {
     if (localVideoRef.current && screenStream) {
       localVideoRef.current.srcObject = screenStream;
-      console.log("Stream atribuída ao localVideoRef!");
     }
   }, [localVideoRef, screenStream]);
 
@@ -161,6 +183,30 @@ export default function Host() {
           style={{ width: "500px" }}
         ></video>
       )}
+
+      <div style={{ marginTop: 20 }}>
+        <h3>Compartilhar Imagem</h3>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleImageSelect}
+          style={{ marginBottom: "10px" }}
+        />
+        {selectedImage && (
+          <div style={{ marginBottom: "10px" }}>
+            <img
+              src={selectedImage}
+              alt="Miniatura"
+              style={{ width: "150px", border: "1px solid #ccc" }}
+            />
+          </div>
+        )}
+        <button onClick={toggleImageSharing} disabled={!selectedImage}>
+          {isImageSharing
+            ? "Parar de Compartilhar Imagem"
+            : "Compartilhar Imagem"}
+        </button>
+      </div>
     </div>
   );
 }
