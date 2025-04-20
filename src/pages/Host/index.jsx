@@ -104,6 +104,22 @@ export default function Host() {
     }
   };
 
+  const stopScreenSharing = () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => track.stop());
+      setScreenStream(null);
+      setHasScreenSharing(false);
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+      if (peerConnection.current) {
+        peerConnection.current.close();
+        peerConnection.current = null;
+      }
+      socket.emit("stopScreenSharing", { roomId });
+    }
+  };
+
   const createPeerConnection = () => {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -175,13 +191,18 @@ export default function Host() {
       {!hasScreenSharing ? (
         <button onClick={startScreenSharing}>Start Screen Sharing</button>
       ) : (
-        // Agora o componente de vídeo sempre estará renderizado quando hasScreenSharing for true
-        <video
-          ref={localVideoRef}
-          autoPlay
-          muted
-          style={{ width: "500px" }}
-        ></video>
+        <div>
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            style={{ width: "500px" }}
+          ></video>
+          <br />
+          <button onClick={stopScreenSharing} style={{ marginTop: "10px" }}>
+            Parar Compartilhamento
+          </button>
+        </div>
       )}
 
       <div style={{ marginTop: 20 }}>
