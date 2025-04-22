@@ -2,29 +2,44 @@ import React, { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { v4 as uuidv4 } from "uuid";
 
-const socket = io("https://6cb1-177-72-141-202.ngrok-free.app", {
+const socket = io("https://7ed5-177-72-141-202.ngrok-free.app", {
   transports: ["websocket", "polling"],
   reconnectionAttempts: 5,
   reconnectionDelay: 1000,
 });
 
 export default function Host() {
-  const [roomId, setRoomId] = useState(null);
-  const [controlAllowed, setControlAllowed] = useState(true);
-
-  const [hasScreenSharing, setHasScreenSharing] = useState(false);
-  const [screenStream, setScreenStream] = useState(null);
+  // REF TAG VIDEO CLINETE E HOST
   const userVideoRef = useRef(null);
   const localVideoRef = useRef(null);
+
+  // CONEXÃO PARA O COMPARTILHAMENTO DE VIDEO
   const peerConnection = useRef(null);
 
+  // INPUT IMAGEM
   const inputRef = useRef(null);
 
+  // ID DA SALA
+  const [roomId, setRoomId] = useState(null);
+
+  // CONTROLE CLIENTE CONECTADO?
+  const [clientConnected, setClientConnected] = useState(false);
+
+  // CONTROLE DO MOUSE
+  const [controlAllowed, setControlAllowed] = useState(true);
+
+  // CONTROLE COMPARTILHMANETO DE TELA
+  const [hasScreenSharing, setHasScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState(null);
+
+  // CONTROLE DA IMAGEM
   const [selectedImage, setSelectedImage] = useState(null);
   const [isImageSharing, setIsImageSharing] = useState(false);
 
-  const [clientConnected, setClientConnected] = useState(false);
+  // CONTROLE PARAR COMPARTILHAMENTO DE VIDEO
+  const [shouldStopSharing, setShouldStopSharing] = useState(false);
 
+  // SELECIONA A IMAGEM
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -36,17 +51,21 @@ export default function Host() {
     }
   };
 
+  // INICIA OU PARA O OMPARTILHAMENTO DA IMAGEM
   const toggleImageSharing = () => {
     stopScreenSharing();
     if (isImageSharing) {
       socket.emit("stopImageShare", { roomId });
       setIsImageSharing(false);
+      setSelectedImage(null);
+      inputRef.current.value = null;
     } else if (selectedImage) {
       socket.emit("shareImage", { roomId, imageData: selectedImage });
       setIsImageSharing(true);
     }
   };
 
+  // CRIA NOVA SALA NO SOCKET
   const generateRoom = () => {
     setClientConnected(false);
     const newRoomId = uuidv4().slice(0, 12);
@@ -54,46 +73,7 @@ export default function Host() {
     socket.emit("createRoom", newRoomId);
   };
 
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.ctrlKey && event.altKey && event.key.toLowerCase() === "p") {
-        setControlAllowed(false);
-        socket.emit("toggleControl", { roomId, allowed: false });
-      } else if (
-        event.ctrlKey &&
-        event.altKey &&
-        event.key.toLowerCase() === "s"
-      ) {
-        setControlAllowed(true);
-        socket.emit("toggleControl", { roomId, allowed: true });
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [roomId]);
-
-  useEffect(() => {
-    socket.on("offer", handleOffer);
-    socket.on("answer", handleAnswer);
-    socket.on("ice-candidate", handleNewICECandidate);
-    socket.on("clientConnected", () => {
-      setClientConnected(true);
-    });
-
-    return () => {
-      socket.off("offer", handleOffer);
-      socket.off("answer", handleAnswer);
-      socket.off("ice-candidate", handleNewICECandidate);
-      socket.off("clientConnected");
-    };
-  }, []);
-
-  useEffect(() => {
-    if (localVideoRef.current && screenStream) {
-      localVideoRef.current.srcObject = screenStream;
-    }
-  }, [localVideoRef, screenStream]);
-
+  // COMEÇA STREAM DE VIDEO
   const startScreenSharing = async () => {
     if (isImageSharing) {
       toggleImageSharing();
@@ -103,10 +83,13 @@ export default function Host() {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
       });
-      // Armazena a stream no estado
       setScreenStream(stream);
-      // Atualiza o estado para renderizar o componente de vídeo
       setHasScreenSharing(true);
+
+      stream.getVideoTracks()[0].addEventListener("ended", () => {
+        console.log("Usuário clicou para parar o compartilhamento");
+        setShouldStopSharing(true);
+      });
 
       if (!peerConnection.current) {
         peerConnection.current = createPeerConnection();
@@ -120,6 +103,7 @@ export default function Host() {
     }
   };
 
+  // PARA STREAM DE VIDEO
   const stopScreenSharing = () => {
     if (screenStream) {
       screenStream.getTracks().forEach((track) => track.stop());
@@ -136,6 +120,7 @@ export default function Host() {
     }
   };
 
+  //  ### CONEXÃO HOST E CLIENT PARA STREM DO VIDEO ###
   const createPeerConnection = () => {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -189,13 +174,66 @@ export default function Host() {
       peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
     }
   };
+  //  ### CONEXÃO HOST E CLIENT PARA STREM DO VIDEO ###
 
+  // ABRE O INPUT DE IMAGEM SEM CLICAR NO INPUT EM SI
   const triggerFileSelect = () => {
     if (isImageSharing) {
       toggleImageSharing();
     }
     inputRef.current.click();
   };
+
+  // CONTROLE DO MOUSE NO CLIENT, ATIVAR OU DESATIVAR ELE PELO ATALHO NO TECLADO
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.ctrlKey && event.altKey && event.key.toLowerCase() === "p") {
+        setControlAllowed(false);
+        socket.emit("toggleControl", { roomId, allowed: false });
+      } else if (
+        event.ctrlKey &&
+        event.altKey &&
+        event.key.toLowerCase() === "s"
+      ) {
+        setControlAllowed(true);
+        socket.emit("toggleControl", { roomId, allowed: true });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [roomId]);
+
+  // ### CONEXÃO HOST E CLIENTE PARA STREM DO VIDEO ###
+  useEffect(() => {
+    socket.on("offer", handleOffer);
+    socket.on("answer", handleAnswer);
+    socket.on("ice-candidate", handleNewICECandidate);
+    socket.on("clientConnected", () => {
+      setClientConnected(true);
+    });
+
+    return () => {
+      socket.off("offer", handleOffer);
+      socket.off("answer", handleAnswer);
+      socket.off("ice-candidate", handleNewICECandidate);
+      socket.off("clientConnected");
+    };
+  }, []);
+
+  // OBTEM VIDEO COMPARTILHADO LOCALMENTE
+  useEffect(() => {
+    if (localVideoRef.current && screenStream) {
+      localVideoRef.current.srcObject = screenStream;
+    }
+  }, [localVideoRef, screenStream]);
+
+  // PARA A STREAM DE VIDEO PELO POP-UP DO NAVEGADOR
+  useEffect(() => {
+    if (shouldStopSharing) {
+      stopScreenSharing();
+      setShouldStopSharing(false);
+    }
+  }, [shouldStopSharing]);
 
   return (
     <div
