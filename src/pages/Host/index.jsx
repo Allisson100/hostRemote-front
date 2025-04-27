@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useRef } from "react";
-import { io } from "socket.io-client";
+import React, { useState, useEffect, useRef, useContext } from "react";
 import { v4 as uuidv4 } from "uuid";
-
-const socket = io("https://2dd8-177-72-141-202.ngrok-free.app", {
-  transports: ["websocket", "polling"],
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-});
+import { SocketContext } from "../../contexts/SocketContext";
+import { handleHashRoom } from "../../utils/handleHashRoom";
+import { AuthContext } from "../../contexts/AuthContext";
 
 export default function Host() {
+  const { socket } = useContext(SocketContext);
+  const { user } = useContext(AuthContext);
+
   // REF TAG VIDEO CLINETE E HOST
   const userVideoRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -21,6 +20,8 @@ export default function Host() {
 
   // ID DA SALA
   const [roomId, setRoomId] = useState(null);
+
+  const [hashRoom, setHashRoom] = useState("");
 
   // CONTROLE CLIENTE CONECTADO?
   const [clientConnected, setClientConnected] = useState(false);
@@ -70,6 +71,11 @@ export default function Host() {
     setClientConnected(false);
     const newRoomId = uuidv4().slice(0, 12);
     setRoomId(newRoomId);
+    const hashRoom = handleHashRoom({
+      connectionUrl: user?.connectionUrl,
+      socketRoomId: newRoomId,
+    });
+    setHashRoom(hashRoom);
     socket.emit("createRoom", newRoomId);
   };
 
@@ -87,7 +93,6 @@ export default function Host() {
       setHasScreenSharing(true);
 
       stream.getVideoTracks()[0].addEventListener("ended", () => {
-        console.log("Usuário clicou para parar o compartilhamento");
         setShouldStopSharing(true);
       });
 
@@ -205,6 +210,8 @@ export default function Host() {
 
   // ### CONEXÃO HOST E CLIENTE PARA STREM DO VIDEO ###
   useEffect(() => {
+    if (!socket) return;
+
     socket.on("offer", handleOffer);
     socket.on("answer", handleAnswer);
     socket.on("ice-candidate", handleNewICECandidate);
@@ -218,7 +225,7 @@ export default function Host() {
       socket.off("ice-candidate", handleNewICECandidate);
       socket.off("clientConnected");
     };
-  }, []);
+  }, [socket]);
 
   // OBTEM VIDEO COMPARTILHADO LOCALMENTE
   useEffect(() => {
@@ -363,8 +370,16 @@ export default function Host() {
                 }}
               >
                 Envie este link para o cliente:{" "}
-                <span style={{ fontWeight: "bold" }}>
-                  https://client-remote-front.vercel.app/#/client/{roomId}
+                <span
+                  style={{
+                    fontWeight: "bold",
+                    wordBreak: "break-all",
+                    whiteSpace: "normal",
+                  }}
+                >
+                  {`${
+                    import.meta.env.VITE_FRONT_DOIS
+                  }/#/client/${encodeURIComponent(hashRoom)}`}
                 </span>
               </p>
 

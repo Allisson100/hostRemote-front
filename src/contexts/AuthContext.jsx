@@ -4,6 +4,7 @@ export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(null);
 
   const checkAuth = () => {
     const getUserInfos = sessionStorage.getItem("@REMOTEACCESS_USERINFOS");
@@ -17,22 +18,21 @@ export const AuthProvider = ({ children }) => {
         return true;
       }
     }
-
     return false;
   };
 
   useEffect(() => {
-    checkAuth();
+    const isAuthenticated = checkAuth();
+
+    setAuthChecked(isAuthenticated);
   }, []);
 
+  if (authChecked === null) {
+    return <div>Caregando ...</div>;
+  }
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        setUser,
-        checkAuth,
-      }}
-    >
+    <AuthContext.Provider value={{ user, setUser, checkAuth }}>
       {children}
     </AuthContext.Provider>
   );
