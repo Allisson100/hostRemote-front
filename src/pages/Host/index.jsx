@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { SocketContext } from "../../contexts/SocketContext";
 import { handleHashRoom } from "../../utils/handleHashRoom";
 import { AuthContext } from "../../contexts/AuthContext";
+import { TextField } from "@mui/material";
 
 export default function Host() {
   const { socket } = useContext(SocketContext);
@@ -20,8 +21,8 @@ export default function Host() {
 
   // ID DA SALA
   const [roomId, setRoomId] = useState(null);
-
   const [hashRoom, setHashRoom] = useState("");
+  const [inputValue, setInputValue] = useState("");
 
   // CONTROLE CLIENTE CONECTADO?
   const [clientConnected, setClientConnected] = useState(false);
@@ -37,8 +38,23 @@ export default function Host() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [isImageSharing, setIsImageSharing] = useState(false);
 
+  console.log("isImageSharing", isImageSharing);
+
   // CONTROLE PARAR COMPARTILHAMENTO DE VIDEO
   const [shouldStopSharing, setShouldStopSharing] = useState(false);
+
+  const handelReset = () => {
+    setRoomId(null);
+    setHashRoom("");
+    setInputValue("");
+    setClientConnected(false);
+    setControlAllowed(true);
+    setHasScreenSharing(false);
+    setScreenStream(null);
+    setSelectedImage(null);
+    setIsImageSharing(false);
+    setShouldStopSharing(false);
+  };
 
   // SELECIONA A IMAGEM
   const handleImageSelect = (e) => {
@@ -63,6 +79,8 @@ export default function Host() {
     } else if (selectedImage) {
       socket.emit("shareImage", { roomId, imageData: selectedImage });
       setIsImageSharing(true);
+      setControlAllowed(false);
+      socket.emit("toggleControl", { roomId, allowed: false });
     }
   };
 
@@ -200,13 +218,20 @@ export default function Host() {
         event.altKey &&
         event.key.toLowerCase() === "s"
       ) {
+        console.log("top");
+
         setControlAllowed(true);
         socket.emit("toggleControl", { roomId, allowed: true });
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
+
+    if (isImageSharing) {
+      window.removeEventListener("keydown", handleKeyDown);
+    } else {
+      window.addEventListener("keydown", handleKeyDown);
+    }
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [roomId]);
+  }, [roomId, isImageSharing]);
 
   // ### CONEXÃO HOST E CLIENTE PARA STREM DO VIDEO ###
   useEffect(() => {
@@ -218,12 +243,21 @@ export default function Host() {
     socket.on("clientConnected", () => {
       setClientConnected(true);
     });
+    socket.on("reset", () => {
+      handelReset();
+    });
+
+    socket.on("inputValueChange", (data) => {
+      setInputValue(data?.value);
+    });
 
     return () => {
       socket.off("offer", handleOffer);
       socket.off("answer", handleAnswer);
       socket.off("ice-candidate", handleNewICECandidate);
       socket.off("clientConnected");
+      socket.off("inputValueChange");
+      socket.off("reset");
     };
   }, [socket]);
 
@@ -256,9 +290,9 @@ export default function Host() {
       <div
         style={{
           width: "70%",
-          backgroundColor: "#000000",
           height: "calc(100vh - 4rem)",
-          borderRadius: "2rem",
+          backgroundColor: !selectedImage && "black",
+          borderRadius: !selectedImage && "2rem",
           overflow: "hidden",
           display: "flex",
           alignItems: "center",
@@ -277,15 +311,49 @@ export default function Host() {
           ></video>
         )}
         {selectedImage && (
-          <div style={{ marginBottom: "10px", textAlign: "center" }}>
-            <img
-              src={selectedImage}
-              alt="Miniatura"
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+              width: "100%",
+              height: "100%",
+            }}
+          >
+            <div
               style={{
                 width: "100%",
-                height: "auto",
+                height: "40%",
               }}
-            />
+            >
+              <TextField
+                placeholder="Aguarde o cliente digitar ..."
+                disabled
+                fullWidth
+                multiline
+                minRows={7}
+                maxRows={7}
+                value={inputValue}
+              />
+            </div>
+            <div
+              style={{
+                textAlign: "center",
+                width: "100%",
+                height: "60%",
+                backgroundColor: "#000000",
+                borderRadius: "2rem",
+              }}
+            >
+              <img
+                src={selectedImage}
+                alt="Miniatura"
+                style={{
+                  width: "auto",
+                  height: "100%",
+                }}
+              />
+            </div>
           </div>
         )}
         {!hasScreenSharing && !selectedImage && (
