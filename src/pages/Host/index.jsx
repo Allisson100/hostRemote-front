@@ -38,8 +38,6 @@ export default function Host() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [isImageSharing, setIsImageSharing] = useState(false);
 
-  console.log("isImageSharing", isImageSharing);
-
   // CONTROLE PARAR COMPARTILHAMENTO DE VIDEO
   const [shouldStopSharing, setShouldStopSharing] = useState(false);
 
@@ -94,6 +92,13 @@ export default function Host() {
       socketRoomId: newRoomId,
     });
     setHashRoom(hashRoom);
+    stopScreenSharing();
+    socket.emit("stopImageShare", { roomId });
+    setIsImageSharing(false);
+    setSelectedImage(null);
+    setControlAllowed(true);
+    inputRef.current.value = null;
+
     socket.emit("createRoom", newRoomId);
   };
 
@@ -218,8 +223,6 @@ export default function Host() {
         event.altKey &&
         event.key.toLowerCase() === "s"
       ) {
-        console.log("top");
-
         setControlAllowed(true);
         socket.emit("toggleControl", { roomId, allowed: true });
       }
