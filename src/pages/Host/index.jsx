@@ -501,7 +501,7 @@ export default function Host() {
                   marginBottom: "0.5rem",
                 }}
               >
-                Compartilhar vídeo
+                Compartilhar Tela
               </button>
             ) : (
               <div style={{ textAlign: "center" }}>
